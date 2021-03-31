@@ -113,12 +113,18 @@ Path canonPath(const Path & path, bool resolveSymlinks)
     if (path[0] != '/')
         throw Error("not an absolute path: '%1%'", path);
 
-    string::const_iterator i = path.begin(), end = path.end();
     string temp;
+    if (resolveSymlinks) {
+        char *result = realpath(path.c_str(), nullptr);
+        if (!result)
+            throw SysError("Error from realpath '%1%'", path);
+        temp = result;
+        free(result);
+        return temp;
+    }
 
-    /* Count the number of times we follow a symlink and stop at some
-       arbitrary (but high) limit to prevent infinite loops. */
-    unsigned int followCount = 0, maxFollow = 1024;
+    /* Canonicalize ignoring symlinks. May produce incorrect result */
+    string::const_iterator i = path.begin(), end = path.end();
 
     while (1) {
 
@@ -142,20 +148,6 @@ Path canonPath(const Path & path, bool resolveSymlinks)
         else {
             s += '/';
             while (i != end && *i != '/') s += *i++;
-
-            /* If s points to a symlink, resolve it and continue from there */
-            if (resolveSymlinks && isLink(s)) {
-                if (++followCount >= maxFollow)
-                    throw Error("infinite symlink recursion in path '%1%'", path);
-                temp = readLink(s) + string(i, end);
-                i = temp.begin();
-                end = temp.end();
-                if (!temp.empty() && temp[0] == '/') {
-                    s.clear();  /* restart for symlinks pointing to absolute path */
-                } else {
-                    s = dirOf(s);
-                }
-            }
         }
     }
 
